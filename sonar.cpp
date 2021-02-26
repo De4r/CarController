@@ -1,7 +1,7 @@
 #include "sonar.h"
 #include <pigpiod_if2.h>
 #include <QDebug>
-
+#include "common.h"
 
 #define SRTE_GOOD      0
 #define SRTE_BAD_RANGE 1
@@ -12,7 +12,7 @@ void Sonar::trigger()
 {
     int i = gpio_trigger(this->pi, this->trig, 11, 1);
     if (i<0) {
-        emit sendMessage("Blad w " + this->frontOrRear + "sonar podczas trigger()!");
+        if (debugOutputs) emit sendMessage("Blad w " + this->frontOrRear + "sonar podczas trigger()!");
     }
 }
 
@@ -21,15 +21,6 @@ Sonar::Sonar(int pi, char trigPin, char echoPin, QString rearOrFront, QObject *p
     int error = 0;
     if (parent){
         this->frontOrRear = rearOrFront;
-        if (rearOrFront == "front"){
-            connect(this, SIGNAL(sendValue(float)), parent, SLOT(getFrontDistance(float)));
-        }
-        else if (rearOrFront == "rear") {
-            connect(this, SIGNAL(sendValue(float)), parent, SLOT(getRearDistance(float)));
-        }
-        else {
-            error = 1;
-        }
         connect(this, SIGNAL(sendMessage(QString)), parent, SLOT(printMessage(QString)));
 
 
@@ -40,6 +31,8 @@ Sonar::Sonar(int pi, char trigPin, char echoPin, QString rearOrFront, QObject *p
 
         this->min_cms = 2;
         this->max_cms = 400.0;
+        this->used_max = 200.0;
+        this->used_min = 5.0;
         //static this->filter = SMA<10>;
         this->_pth = NULL;
         this->_got_trig = 0;
@@ -61,7 +54,7 @@ Sonar::Sonar(int pi, char trigPin, char echoPin, QString rearOrFront, QObject *p
     if (!error) {
         emit sendMessage("Inicjalizacja " + frontOrRear + " sonar. TrigId: " + QString::number(_cb_id_trig) + " EchoId: " + QString::number(_cb_id_echo));
     } else {
-        qDebug() <<"Blad inicjalizacji. Sonar: " << frontOrRear << " Error: " << QString::number(error);
+        if (debugOutputs) qDebug() <<"Blad inicjalizacji. Sonar: " << frontOrRear << " Error: " << QString::number(error);
     }
 
 }
@@ -72,7 +65,7 @@ void Sonar::cbCancel()
 {
     callback_cancel(_cb_id_echo);
     callback_cancel(_cb_id_trig);
-    qDebug() << "Kasowanie callbackow. TrigId: " << QString::number(_cb_id_trig) << " EchoId: " << QString::number(_cb_id_echo);
+    if (debugOutputs) qDebug() << "Kasowanie callbackow. TrigId: " << QString::number(_cb_id_trig) << " EchoId: " << QString::number(_cb_id_echo);
 
 }
 
@@ -81,11 +74,11 @@ void Sonar::cb(int pi, unsigned gpio, unsigned level, unsigned int tick)
     int round_trip_micros;
     float range_cms;
     int tick_diff;
-    if (gpio == this->trig)
+    if (gpio == trig)
     {
-        this->_got_trig = 1;
-        this->_trig_tick = tick;
-        this->_got_echo = 0;
+        _got_trig = 1;
+        _trig_tick = tick;
+        _got_echo = 0;
     }
     else if (level == 1)
     {
@@ -96,44 +89,52 @@ void Sonar::cb(int pi, unsigned gpio, unsigned level, unsigned int tick)
           Those rising edges must be ignored.
           */
 
-            tick_diff = tick - this->_trig_tick;
+            tick_diff = tick - _trig_tick;
 
             if (tick_diff > 100)
             {
-                this->_got_echo = 1;
-                this->_echo_tick = tick;
+                _got_echo = 1;
+                _echo_tick = tick;
             }
         }
     }
     else if (level == 0)
     {
-        if (this->_got_echo)
+        if (_got_echo)
         {
-            this->_got_echo = 0;
-            this->_got_trig = 0;
+            _got_echo = 0;
+            _got_trig = 0;
 
-            round_trip_micros = tick - this->_echo_tick;
+            round_trip_micros = tick - _echo_tick;
             range_cms = round_trip_micros * 0.017015;
 
-            if ((this->min_cms <= range_cms) && (range_cms <= this->max_cms))
+            if ((min_cms <= range_cms) && (range_cms <= max_cms))
             {
-                this->range_cms = range_cms;
-                this->round_trip_micros = round_trip_micros;
-                this->status = SRTE_GOOD;
+                //this->range_cms = range_cms;
+                //this->round_trip_micros = round_trip_micros;
+                //this->status = SRTE_GOOD;
+
             }
             else if (range_cms > this->max_cms)
             {
-                this->range_cms = this->max_cms;
+                range_cms = this->max_cms;
             }
             else if (range_cms < this->min_cms)
             {
-                this->range_cms = this->min_cms;
+                range_cms = this->min_cms;
             }
 
-            this->_ready = 1;
-            this->_new_reading = 1;
-            int value = int(filter(int(range_cms)*10));
-            emit sendValue(value/10.0);
+            _ready = 1;
+            _new_reading = 1;
+
+            rangeAct = int(range_cms);//int(filter(int(range_cms)));
+            //this->rangePrev = filter.value();
+            if (rangePrev != this->rangeAct) {
+                //emit sendValue(rangeAct);
+                if (frontOrRear == "front") cardata.frontRadar = rangeAct;
+                if (frontOrRear == "rear") cardata.rearRadar = rangeAct;
+            }
+            rangePrev = rangeAct;
         }
     }
 }
@@ -146,6 +147,6 @@ void Sonar::cbEx(int pi, unsigned gpio, unsigned level, unsigned int tick, void 
 
 Sonar::~Sonar()
 {
-    this->cbCancel();
+    cbCancel();
 }
 

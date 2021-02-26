@@ -16,6 +16,9 @@ public:
                 index = 0;
             return (sum + (N / 2)) / N;
         }
+    input_t value(){
+        return (sum + (N / 2)) / N;
+    };
 
     static_assert(
         sum_t(0) < sum_t(-1),  // Check that `sum_t` is an unsigned type

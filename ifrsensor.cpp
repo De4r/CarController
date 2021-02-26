@@ -1,7 +1,7 @@
 #include "ifrsensor.h"
 #include <QString>
 #include <QDebug>
-
+#include "common.h"
 
 IFRSensor::IFRSensor(int pi, char pin, int side, QObject *parent) : QObject(parent)
 {
@@ -13,22 +13,22 @@ IFRSensor::IFRSensor(int pi, char pin, int side, QObject *parent) : QObject(pare
         this->_pth = NULL;
 
         connect(this, SIGNAL(sendMessage(QString)), parent, SLOT(printMessage(QString)));
-        connect(this, SIGNAL(collisionDetectedSignal(int, bool)), parent, SLOT(collisionDetected(int, bool)));
+        connect(this, SIGNAL(collisionDetectedSignal()), parent, SLOT(collisionDetected()));
         set_mode(pi, sensorPin, PI_INPUT);
         set_pull_up_down(pi, sensorPin, PI_PUD_UP);
 
         this->_cb_id_rising = callback_ex(pi, pin, RISING_EDGE, cbEx, this);
         this->_cb_id_falling = callback_ex(pi, pin, FALLING_EDGE, cbEx, this);
-
+        set_glitch_filter(pi, pin, this->_glitch_ms);
     }
     else {
         error = -1;
     }
 
     if (!error) {
-        emit sendMessage("Inicjalizacja IFR: " + QString::number(side) + " cb_id: " + QString::number(_cb_id_rising));
+        emit sendMessage("Inicjalizacja IFR: " + QString::number(side) + " cb_id_: " + QString::number(_cb_id_rising) + " cb_id_: " + QString::number(_cb_id_falling));
     } else {
-        qDebug() << "Blad inicjalizacji IRF: " << QString::number(side) << " Error: " << QString::number(error);
+        if (debugOutputs) qDebug() << "Blad inicjalizacji IRF: " << QString::number(side) << " Error: " << QString::number(error);
     }
 }
 
@@ -41,14 +41,22 @@ void IFRSensor::cbCancel()
 {
     callback_cancel(_cb_id_rising);
     callback_cancel(_cb_id_falling);
-    qDebug() << "Kasowanie callbackow. IFR cb id: " << QString::number(_cb_id_rising) << " i " << QString::number(_cb_id_rising);
+    if (debugOutputs) qDebug() << "Kasowanie callbackow. IFR cb id: " << QString::number(_cb_id_rising) << " i " << QString::number(_cb_id_rising);
 }
 
 void IFRSensor::cb(int pi, unsigned gpio, unsigned level, unsigned int tick)
 {
-    //qDebug() << "IFR: " << this->side << "level: " << level;
+    if (debugOutputs) qDebug() << "IFR: " << this->side << "level: " << level;
     if (gpio == sensorPin){
-        emit collisionDetectedSignal(this->side, level);
+        emit collisionDetectedSignal();
+        level = !level;
+
+        if (this->side == 0) cardata.frontLeftIFR = level;
+        if (this->side == 1) cardata.frontRightIFR = level;
+        if (this->side == 2) cardata.rearLeftIFR = level;
+        if (this->side == 3) cardata.rearRightIFR = level;
+
+
     }
 }
 

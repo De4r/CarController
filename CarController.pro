@@ -10,17 +10,21 @@ CONFIG += c++11
 LIBS += -lpthread -lrt -lpigpiod_if2
 INCLUDEPATH += /raspi/sysroot/usr/include/
 SOURCES += \
+    common.cpp \
     ifrsensor.cpp \
     joypad.cpp \
     main.cpp \
     mainwindow.cpp \
+    motorsteering.cpp \
     sma.cpp \
     sonar.cpp
 
 HEADERS += \
+    common.h \
     ifrsensor.h \
     joypad.h \
     mainwindow.h \
+    motorsteering.h \
     sma.h \
     sonar.h
 
